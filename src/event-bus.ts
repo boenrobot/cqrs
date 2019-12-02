@@ -6,11 +6,13 @@ import { isFunction } from 'util';
 import { CommandBus } from './command-bus';
 import { EVENTS_HANDLER_METADATA, SAGA_METADATA } from './decorators/constants';
 import { InvalidSagaException } from './exceptions';
+import { DefaultEventDispatcher } from './helpers/default-event-dispatcher';
 import { DefaultPubSub } from './helpers/default-pubsub';
 import { defaultGetEventName } from './helpers/default-get-event-name';
 import {
   IEvent,
   IEventBus,
+  IEventDispatcher,
   IEventHandler,
   IEventPublisher,
   ISaga,
@@ -27,6 +29,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
   implements IEventBus<EventBase>, OnModuleDestroy {
   protected getEventName: (event: EventBase) => string;
   private _publisher: IEventPublisher<EventBase>;
+  private _dispatcher: IEventDispatcher<EventBase>;
   protected readonly subscriptions: Subscription[];
 
   constructor(
@@ -37,6 +40,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
     this.subscriptions = [];
     this.getEventName = defaultGetEventName;
     this.useDefaultPublisher();
+    this.useDefaultDispatcher();
   }
 
   get publisher(): IEventPublisher<EventBase> {
@@ -45,6 +49,14 @@ export class EventBus<EventBase extends IEvent = IEvent>
 
   set publisher(_publisher: IEventPublisher<EventBase>) {
     this._publisher = _publisher;
+  }
+
+  get dispatcher(): IEventDispatcher<EventBase> {
+    return this._dispatcher;
+  }
+
+  set dispatcher(_dispatcher: IEventDispatcher<EventBase>) {
+    this._dispatcher = _dispatcher;
   }
 
   onModuleDestroy() {
@@ -64,11 +76,13 @@ export class EventBus<EventBase extends IEvent = IEvent>
 
   bind(handler: IEventHandler<EventBase>, name: string) {
     const stream$ = name ? this.ofEventName(name) : this.subject$;
-    const subscription = stream$.subscribe(event => handler.handle(event));
+    const subscription = stream$.subscribe(event =>
+      this._dispatcher.fireEventHandler(event, handler, name),
+    );
     this.subscriptions.push(subscription);
   }
 
-  registerSagas(types: Type<unknown>[] = []) {
+  registerSagas(types: Type<unknown>[] = []): Promise<void[]> {
     const sagas = types
       .map(target => {
         const metadata = Reflect.getMetadata(SAGA_METADATA, target) || [];
@@ -80,7 +94,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
       })
       .reduce((a, b) => a.concat(b), []);
 
-    sagas.forEach(saga => this.registerSaga(saga));
+    return Promise.all(sagas.map(saga => this.registerSaga(saga)));
   }
 
   register(handlers: EventHandlerType<EventBase>[] = []) {
@@ -104,7 +118,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
     );
   }
 
-  protected registerSaga(saga: ISaga<EventBase>) {
+  protected async registerSaga(saga: ISaga<EventBase>) {
     if (!isFunction(saga)) {
       throw new InvalidSagaException();
     }
@@ -113,9 +127,9 @@ export class EventBus<EventBase extends IEvent = IEvent>
       throw new InvalidSagaException();
     }
 
-    const subscription = stream$
-      .pipe(filter(e => !!e))
-      .subscribe(command => this.commandBus.execute(command));
+    const subscription = (
+      await this._dispatcher.processSaga(stream$)
+    ).subscribe(command => this._dispatcher.fireSaga(command, this.commandBus));
 
     this.subscriptions.push(subscription);
   }
@@ -128,5 +142,9 @@ export class EventBus<EventBase extends IEvent = IEvent>
 
   private useDefaultPublisher() {
     this._publisher = new DefaultPubSub<EventBase>(this.subject$);
+  }
+
+  private useDefaultDispatcher() {
+    this._dispatcher = new DefaultEventDispatcher<EventBase>();
   }
 }
