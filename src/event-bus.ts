@@ -74,9 +74,11 @@ export class EventBus<EventBase extends IEvent = IEvent>
     return (events || []).map(event => this._publisher.publish(event));
   }
 
-  bind(handler: IEventHandler<EventBase>, name: string) {
+  async bind(handler: IEventHandler<EventBase>, name: string) {
     const stream$ = name ? this.ofEventName(name) : this.subject$;
-    const subscription = stream$.subscribe(event =>
+    const subscription = (
+      await this._dispatcher.processEventBinding(name, handler, stream$)
+    ).subscribe(event =>
       this._dispatcher.fireEventHandler(event, handler, name),
     );
     this.subscriptions.push(subscription);
@@ -98,7 +100,7 @@ export class EventBus<EventBase extends IEvent = IEvent>
   }
 
   register(handlers: EventHandlerType<EventBase>[] = []) {
-    handlers.forEach(handler => this.registerHandler(handler));
+    return Promise.all(handlers.map(handler => this.registerHandler(handler)));
   }
 
   protected registerHandler(handler: EventHandlerType<EventBase>) {
@@ -107,8 +109,10 @@ export class EventBus<EventBase extends IEvent = IEvent>
       return;
     }
     const eventsNames = this.reflectEventsNames(handler);
-    eventsNames.map(event =>
-      this.bind(instance as IEventHandler<EventBase>, event.name),
+    return Promise.all(
+      eventsNames.map(event =>
+        this.bind(instance as IEventHandler<EventBase>, event.name),
+      ),
     );
   }
 
@@ -129,7 +133,9 @@ export class EventBus<EventBase extends IEvent = IEvent>
 
     const subscription = (
       await this._dispatcher.processSaga(stream$)
-    ).subscribe(command => this._dispatcher.fireSaga(command, this.commandBus));
+    ).subscribe(command =>
+      this._dispatcher.fireSagaCommand(command, this.commandBus),
+    );
 
     this.subscriptions.push(subscription);
   }

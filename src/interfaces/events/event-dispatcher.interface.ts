@@ -7,10 +7,18 @@ export interface IEventDispatcher<EventBase extends IEvent = IEvent> {
   fireEventHandler(
     event: EventBase,
     handler: IEventHandler<EventBase>,
-    name: string,
+    eventName: string,
   ): void | Promise<void>;
   processSaga(
     materializedSaga: Observable<ICommand>,
   ): Observable<ICommand> | Promise<Observable<ICommand>>;
-  fireSaga(command: ICommand, commandBus: ICommandBus): void | Promise<void>;
+  fireSagaCommand(
+    command: ICommand,
+    commandBus: ICommandBus,
+  ): void | Promise<void>;
+  processEventBinding(
+    eventName: string,
+    handler: IEventHandler<EventBase>,
+    stream: Observable<EventBase>,
+  ): Observable<EventBase> | Promise<Observable<EventBase>>;
 }

@@ -19,12 +19,23 @@ export class DefaultEventDispatcher<EventBase extends IEvent = IEvent>
   fireEventHandler(
     event: EventBase,
     handler: IEventHandler<EventBase>,
-    name: string,
+    eventName: string,
   ): void | Promise<void> {
     handler.handle(event);
   }
 
-  fireSaga(command: ICommand, commandBus: ICommandBus): void | Promise<void> {
+  fireSagaCommand(
+    command: ICommand,
+    commandBus: ICommandBus,
+  ): void | Promise<void> {
     commandBus.execute(command);
+  }
+
+  processEventBinding(
+    eventName: string,
+    handler: IEventHandler<EventBase>,
+    stream: Observable<EventBase>,
+  ): Observable<EventBase> | Promise<Observable<EventBase>> {
+    return stream;
   }
 }
