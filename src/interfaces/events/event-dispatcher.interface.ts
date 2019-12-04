@@ -1,3 +1,4 @@
+import { Type } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ICommandBus, ICommand } from '..';
 import { IEventHandler } from './event-handler.interface';
@@ -17,7 +18,7 @@ export interface IEventDispatcher<EventBase extends IEvent = IEvent> {
     commandBus: ICommandBus,
   ): void | Promise<void>;
   processEventBinding(
-    eventName: string,
+    eventName: Type<EventBase>,
     handler: IEventHandler<EventBase>,
     stream: Observable<EventBase>,
   ): Observable<EventBase> | Promise<Observable<EventBase>>;
